@@ -2,9 +2,9 @@
 import enum
 from datetime import datetime, timezone
 from typing import Annotated
-
+from sqlalchemy import CheckConstraint
 from pydantic import StringConstraints
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, SQLModel, select
 
 
 def utcnow() -> datetime:
@@ -91,3 +91,16 @@ class Like(SQLModel, table=True):
    user_id: int = Field(foreign_key="users.id", primary_key=True, ondelete="CASCADE")
    post_id: int = Field(foreign_key="posts.id", primary_key=True, ondelete="CASCADE")
    created_at: datetime = Field(default_factory=utcnow)
+
+class Follow(SQLModel, table=True):
+    """Tabla de ENLACE: una fila = "el usuario A sigue al usuario B"."""
+
+    __tablename__ = "follows"
+
+    __table_args__ = (
+        CheckConstraint("follower_id != followed_id", name="no_self_follow"),
+    )
+
+    follower_id: int = Field(foreign_key="users.id", primary_key=True, ondelete="CASCADE")
+    followed_id: int = Field(foreign_key="users.id", primary_key=True, ondelete="CASCADE")
+    created_at: datetime = Field(default_factory=utcnow)
