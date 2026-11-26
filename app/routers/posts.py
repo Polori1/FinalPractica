@@ -8,16 +8,36 @@ from models import Like, Post, PostCreate, PostPublic, PostUpdate, User, UserPub
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
+#Funciones Auxiliares
+def posts_with_likes():
+    return (
+          select(Post, func.count(col(Like.user_id)))
+          .join(Like, col(Like.post_id) == col(Post.id), isouter=True)
+          .group_by(col(Post.id))
+          )
 
-@router.get("", response_model=list[PostPublic])
+def to_post_with_likes(row) -> PostWithLikes:
+        post, likes_count = row 
+        data = post.model_dump() 
+        data["likes_count"] = likes_count 
+        return PostWithLikes.model_validate(data)
+
+def get_post_with_likes_or_404(db: Session, post_id: int) -> PostWithLikes:
+    row = db.exec(posts_with_likes().where(Post.id == post_id)).first()
+    if row is None:
+          raise HTTPException(status_code=404, detail="Post no encontrado")
+    return to_post_with_likes(row)
+
+@router.get("", response_model=list[PostWithLikes])
 def read_posts(db: SessionDep, offset: int = 0, limit: Annotated[int, Query(le=100)] = 20):
-    stmt = select(Post).order_by(col(Post.created_at).desc()).offset(offset).limit(limit)
-    return db.exec(stmt).all()
+    stmt = posts_with_likes().order_by(col(Post.created_at).desc()).offset(offset).limit(limit)
+    return [to_post_with_likes(row) for row in db.exec(stmt).all()]
 
 
-@router.get("/{post_id}", response_model=PostPublic)
+@router.get("/{post_id}", response_model=PostWithLikes)
 def read_post(post_id: int, db: SessionDep):
-    return get_post_or_404(db, post_id)
+    return get_post_with_likes_or_404(db, post_id)
+
 
 
 @router.post("", response_model=PostPublic, status_code=201)
@@ -54,22 +74,6 @@ def delete_post(post_id: int, db: SessionDep, current_user: CurrentUser):
     db.delete(post)
     db.commit()
 
-#Funciones Auxiliares
-def posts_with_likes(): return (
-                select(Post, func.count(col(Like.user_id))) 
-                .join(Like, col(Like.post_id) == col(Post.id), isouter=True) 
-                .group_by(col(Post.id))
-                )
-def to_post_with_likes(row) -> PostWithLikes:
-        post, likes_count = row
-        return PostWithLikes.model_validate(post, update={"likes_count": likes_count})
-
-def get_post_with_likes_or_404(db: Session, post_id: int) -> PostWithLikes:
-    row = db.exec(posts_with_likes().where(Post.id == post_id)).first()
-    if row is None:
-          raise HTTPException(status_code=404, detail="Post no encontrado")
-    return to_post_with_likes(row)
-
 @router.get("", response_model=list[PostWithLikes]) 
 def read_posts(db: SessionDep, offset: int = 0, limit: Annotated[int, Query(le=100)] = 20): 
     stmt = posts_with_likes().order_by(col(Post.created_at).desc()).offset(offset).limit(limit) 
@@ -88,7 +92,7 @@ def like_post(post_id: int, db: SessionDep, current_user: CurrentUser):
         if like is None:
               db.add(Like(user_id=current_user.id, post_id=post_id))
               db.commit() 
-              return get_post_with_likes_or_404(db, post_id)
+        return get_post_with_likes_or_404(db, post_id)
 
 @router.delete("/{post_id}/like", response_model=PostWithLikes)
 def unlike_post(post_id: int, db: SessionDep, current_user: CurrentUser):
