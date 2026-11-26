@@ -80,7 +80,7 @@ def read_posts(db: SessionDep, offset: int = 0, limit: Annotated[int, Query(le=1
     rows = db.exec(stmt).all() 
     return [to_post_with_likes(row) for row in rows]
 
-@router.get("/{post\_id}", response_model=PostWithLikes)
+@router.get("/{post_id}", response_model=PostWithLikes)
 def read_post(post_id: int, db: SessionDep):
      return get_post_with_likes_or_404(db, post_id)
 
@@ -92,6 +92,7 @@ def like_post(post_id: int, db: SessionDep, current_user: CurrentUser):
         if like is None:
               db.add(Like(user_id=current_user.id, post_id=post_id))
               db.commit() 
+        
         return get_post_with_likes_or_404(db, post_id)
 
 @router.delete("/{post_id}/like", response_model=PostWithLikes)
