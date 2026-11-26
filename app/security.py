@@ -6,7 +6,7 @@ import jwt
 from pwdlib import PasswordHash
 
 # En producción define SECRET_KEY en el entorno; este valor es solo para clase.
-SECRET_KEY = os.getenv("SECRET_KEY", "cambia-esto-en-produccion")
+SECRET_KEY = os.getenv("SECRET_KEY", "mi_clave_secreta_super_segura_de_al_menos_32_caracteres")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
