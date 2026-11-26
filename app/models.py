@@ -83,6 +83,9 @@ class PostPublic(PostBase):
     author_id: int
     created_at: datetime
 
+class PostWithLikes(PostPublic):  # SALE: el post + cuántos likes tiene (se calcula, no se guarda)
+    likes_count: int
+
 class Like(SQLModel, table=True):
     __tablename__ = "likes"
 
