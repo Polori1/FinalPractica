@@ -39,10 +39,12 @@ def register(data: UserCreate, db: SessionDep):
 def login(form: Annotated[OAuth2PasswordRequestForm, Depends()], db: SessionDep):
     # TODO 3: iniciar sesión (el formulario trae form.username y form.password)
     #   a) busca el User por username
+        user = db.exec(select(User).where(User.username == form.username)).first()
     #   b) si no existe, o verify_password(form.password, user.hashed_password) es False
-    #      → raise credentials_error()      (mismo error para ambos casos: ¿por qué?)
+        if not user or not verify_password(form.password, user.hashed_password):
+            raise credentials_error()
     #   c) return Token(access_token=create_access_token(user.id))
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "TODO 3: login")
+        return Token(access_token=create_access_token(user.id))
 
 
 @router.get("/me", response_model=UserMe)
