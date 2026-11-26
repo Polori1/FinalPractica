@@ -1,10 +1,10 @@
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlmodel import col, select
+from sqlmodel import col, select, func, select
 
 from dependencies import CurrentUser, SessionDep, get_post_or_404, is_admin, require
-from models import Post, PostCreate, PostPublic, PostUpdate
+from models import Post, PostCreate, PostPublic, PostUpdate, Like, User, UserPublic
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
@@ -53,3 +53,30 @@ def delete_post(post_id: int, db: SessionDep, current_user: CurrentUser):
 
     db.delete(post)
     db.commit()
+
+#Funciones Auxiliares
+def posts_with_likes(): return (
+                select(Post, func.count(col(Like.user_id))) 
+                .join(Like, col(Like.post_id) == col(Post.id), isouter=True) 
+                .group_by(col(Post.id))
+                )
+def to_post_with_likes(row) -> PostWithLikes:
+        post, likes_count = row
+        return PostWithLikes.model_validate(post, update={"likes_count": likes_count})
+
+def get_post_with_likes_or_404(db: Session, post_id: int) -> PostWithLikes:
+    row = db.exec(posts_with_likes().where(Post.id == post_id)).first()
+    if row is None:
+          raise HTTPException(status_code=404, detail="Post no encontrado")
+    return to_post_with_likes(row)
+
+@router.get("", response_model=list[PostWithLikes]) 
+def read_posts(db: SessionDep, offset: int = 0, limit: Annotated[int, Query(le=100)] = 20): 
+    stmt = posts_with_likes().order_by(col(Post.created_at).desc()).offset(offset).limit(limit) 
+    rows = db.exec(stmt).all() 
+    return [to_post_with_likes(row) for row in rows]
+
+@router.get("/{post\_id}", response_model=PostWithLikes)
+def read_post(post_id: int, db: SessionDep):
+     return get_post_with_likes_or_404(db, post_id)
+
