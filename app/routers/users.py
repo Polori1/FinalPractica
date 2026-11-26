@@ -1,16 +1,14 @@
 from typing import Annotated
-
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func
 from sqlmodel import Session, col, select
-
 from dependencies import CurrentUser, SessionDep, get_user_or_404
 from models import Follow, Like, Post, PostPublic, User, UserProfile, UserPublic
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("/{user_id}", response_model=UserPublic)
+@router.get("/{user_id}", response_model=UserProfile)
 def read_user(user_id: int, db: SessionDep):
     return get_user_or_404(db, user_id)
 
