@@ -80,3 +80,12 @@ def read_posts(db: SessionDep, offset: int = 0, limit: Annotated[int, Query(le=1
 def read_post(post_id: int, db: SessionDep):
      return get_post_with_likes_or_404(db, post_id)
 
+@router.put("/{post_id}/like", response_model=PostWithLikes)
+def like_post(post_id: int, db: SessionDep, current_user: CurrentUser):
+    # TODO 3: dar like. PUT = "déjalo en este estado": hacerlo dos veces NO es un error (idempotente).
+        get_post_or_404(db, post_id)
+        like = db.get(Like, (current_user.id, post_id))
+        if like is None:
+              db.add(Like(user_id=current_user.id, post_id=post_id))
+              db.commit() 
+              return get_post_with_likes_or_404(db, post_id)
