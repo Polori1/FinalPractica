@@ -8,6 +8,14 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from database import get_session
 from main import app
 
+@pytest.fixture()
+def engine():
+    # Base de datos en memoria: cada test empieza de cero y no toca clase2.db
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    SQLModel.metadata.create_all(engine)
+    return engine
 
 @pytest.fixture()
 def client():
@@ -16,6 +24,7 @@ def client():
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
     SQLModel.metadata.create_all(engine)
+
 
     def override_get_session():
         with Session(engine) as session:
@@ -145,3 +154,15 @@ def test_user_likes_endpoint(client):
     liked = client.get(f"/users/{bob_id}/likes").json()
     assert sorted(p["id"] for p in liked) == sorted([p1, p2])
     assert client.get("/users/9999/likes").status_code == 404
+
+def test_deleting_a_post_deletes_its_likes(client, engine):
+    from models import Like
+    alice = register_and_login(client, "alice")
+    bob = register_and_login(client, "bob")
+    post_id = new_post(client, alice)
+    client.put(f"/posts/{post_id}/like", headers = bob).status_code == 200
+    with Session(engine) as db:
+        assert len(db.exec(select(Like)).all()) == 1
+    assert client.delete(f"/posts/{post_id}", headers = alice).status_code == 204
+    with Session(engine) as db:
+            assert db.exec(select(Like)).all() == []
