@@ -50,3 +50,17 @@ def read_user_likes(
     )
     return db.exec(stmt).all()
 
+@router.put("/{user_id}/follow", response_model=UserProfile)
+def follow_user(user_id: int, db: SessionDep, current_user: CurrentUser):
+    target = get_user_or_404(db, user_id)
+    if target.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No puedes seguirte a ti mismo"
+        )
+    follow = db.get(Follow, (current_user.id, user_id))
+    if follow is None:
+        db.add(Follow(follower_id=current_user.id, followed_id=user_id))
+        db.commit()
+
+    return to_profile(db, target)
