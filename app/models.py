@@ -1,0 +1,110 @@
+"""Tablas (table=True) y schemas de la API."""
+import enum
+from datetime import datetime, timezone
+from typing import Annotated
+from sqlalchemy import CheckConstraint
+from pydantic import StringConstraints
+from sqlmodel import Field, SQLModel, select, Relationship
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class Role(str, enum.Enum):
+    USER = "user"
+    ADMIN = "admin"
+
+
+Password = Annotated[str, StringConstraints(min_length=8, max_length=128)]
+
+
+# ═══════════════ Usuarios ═══════════════
+class UserBase(SQLModel):
+    username: str = Field(min_length=3, max_length=50, unique=True, index=True)
+
+
+class User(UserBase, table=True):
+    __tablename__ = "users"
+
+    id: int | None = Field(default=None, primary_key=True)
+    # TODO 1: agrega a la TABLA dos campos
+    hashed_password: str
+    role: Role = Field(default=Role.USER)
+    # (Borra clase2.db y reinicia después de cambiar la tabla.)
+    posts: list["Post"] = Relationship(back_populates="author")
+
+
+class UserCreate(UserBase):  # ENTRA al registrarse: tiene password, NO tiene role
+    password: Password
+
+
+class UserPublic(UserBase):  # SALE: vista pública
+    id: int
+
+
+class UserMe(UserPublic):  # SALE: vista privada, solo para el propio usuario
+    role: Role
+
+class UserProfile(UserPublic):  # SALE: el usuario + sus contadores (se calculan, no se guardan)
+    followers_count: int  # cuántos lo siguen a él
+    following_count: int  # a cuántos sigue él
+
+
+class Token(SQLModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+# ═══════════════ Posts ═══════════════
+class PostBase(SQLModel):
+    title: str = Field(min_length=1, max_length=100)
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class Post(PostBase, table=True):
+    __tablename__ = "posts"
+
+    id: int | None = Field(default=None, primary_key=True)
+    author_id: int = Field(foreign_key="users.id", ondelete="CASCADE")
+    created_at: datetime = Field(default_factory=utcnow)
+    author: User = Relationship(back_populates="posts")
+
+
+class PostCreate(PostBase):
+    # TODO 5: hoy el cliente manda author_id (heredado de la clase 1). ¡Es el agujero!
+    #         Quita este campo: el autor saldrá del token en routers/posts.py.
+    pass
+
+
+class PostUpdate(SQLModel):
+    title: str | None = Field(default=None, min_length=1, max_length=100)
+    content: str | None = Field(default=None, min_length=1, max_length=2000)
+
+
+class PostPublic(PostBase):
+    id: int
+    author_id: int
+    created_at: datetime
+
+class PostWithLikes(PostPublic):
+    likes_count: int
+
+class Like(SQLModel, table=True):
+   __tablename__ = "likes"
+   user_id: int = Field(foreign_key="users.id", primary_key=True, ondelete="CASCADE")
+   post_id: int = Field(foreign_key="posts.id", primary_key=True, ondelete="CASCADE")
+   created_at: datetime = Field(default_factory=utcnow)
+
+class Follow(SQLModel, table=True):
+    """Tabla de ENLACE: una fila = "el usuario A sigue al usuario B"."""
+
+    __tablename__ = "follows"
+
+    __table_args__ = (
+        CheckConstraint("follower_id != followed_id", name="no_self_follow"),
+    )
+
+    follower_id: int = Field(foreign_key="users.id", primary_key=True, ondelete="CASCADE")
+    followed_id: int = Field(foreign_key="users.id", primary_key=True, ondelete="CASCADE")
+    created_at: datetime = Field(default_factory=utcnow)

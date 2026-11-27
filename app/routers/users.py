@@ -1,0 +1,106 @@
+from typing import Annotated
+from fastapi import APIRouter, HTTPException, Query, status
+from sqlalchemy import func
+from sqlmodel import Session, col, select
+from dependencies import CurrentUser, SessionDep, get_user_or_404
+from models import Follow, Like, Post, PostPublic, User, UserProfile, UserPublic
+
+router = APIRouter(prefix="/users", tags=["users"])
+
+
+def to_profile(db: Session, user: User) -> UserProfile:
+    followers = db.exec(
+        select(func.count()).select_from(Follow).where(col(Follow.followed_id) == user.id)
+    ).one()
+    following = db.exec(
+        select(func.count()).select_from(Follow).where(col(Follow.follower_id) == user.id)
+    ).one()
+    return UserProfile(
+        **user.model_dump(),
+        followers_count=followers,
+        following_count=following
+    )
+
+
+@router.get("/{user_id}", response_model=UserProfile)
+def read_user(user_id: int, db: SessionDep):
+    user = get_user_or_404(db, user_id)
+    return to_profile(db, user)
+
+
+@router.get("/{user_id}/posts", response_model=list[PostPublic])
+def read_user_posts(user_id: int, db: SessionDep):
+    return get_user_or_404(db, user_id).posts
+
+
+@router.get("/{user_id}/likes", response_model=list[PostPublic])
+def read_user_likes(
+    user_id: int, db: SessionDep, offset: int = 0, limit: Annotated[int, Query(le=100)] = 20
+):
+    """Los posts a los que este usuario le dio like (el más reciente primero)."""
+    # TODO 6 (DESAFÍO, sin pistas de código): es el espejo del TODO 5.
+    get_user_or_404(db, user_id)
+    stmt = (
+        select(Post)
+        .join(Like, col(Like.post_id) == col(Post.id))
+        .where(Like.user_id == user_id)
+        .order_by(col(Like.created_at).desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return db.exec(stmt).all()
+
+@router.put("/{user_id}/follow", response_model=UserProfile)
+def follow_user(user_id: int, db: SessionDep, current_user: CurrentUser):
+    target = get_user_or_404(db, user_id)
+    if target.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No puedes seguirte a ti mismo"
+        )
+    follow = db.get(Follow, (current_user.id, user_id))
+    if follow is None:
+        db.add(Follow(follower_id=current_user.id, followed_id=user_id))
+        db.commit()
+
+    return to_profile(db, target)
+
+@router.delete("/{user_id}/follow", response_model=UserProfile)
+def unfollow_user(user_id: int, db: SessionDep, current_user: CurrentUser):
+    target = get_user_or_404(db, user_id)
+    follow = db.get(Follow, (current_user.id, user_id))
+    if follow:
+        db.delete(follow)
+        db.commit()
+
+    return to_profile(db, target)
+
+@router.get("/{user_id}/followers", response_model=list[UserPublic])
+def read_followers(
+    user_id: int, db: SessionDep, offset: int = 0, limit: Annotated[int, Query(le=100)] = 20
+):
+    get_user_or_404(db, user_id)
+    stmt = (
+        select(User)
+        .join(Follow, col(Follow.follower_id) == col(User.id))
+        .where(col(Follow.followed_id) == user_id)
+        .order_by(col(Follow.created_at).desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return db.exec(stmt).all()
+
+@router.get("/{user_id}/following", response_model=list[UserPublic])
+def read_following(
+    user_id: int, db: SessionDep, offset: int = 0, limit: Annotated[int, Query(le=100)] = 20
+):
+    get_user_or_404(db, user_id)
+    stmt = (
+        select(User)
+        .join(Follow, col(Follow.followed_id) == col(User.id))
+        .where(col(Follow.follower_id) == user_id)
+        .order_by(col(Follow.created_at).desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return db.exec(stmt).all()
