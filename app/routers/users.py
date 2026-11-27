@@ -74,3 +74,18 @@ def unfollow_user(user_id: int, db: SessionDep, current_user: CurrentUser):
         db.commit()
 
     return to_profile(db, target)
+
+@router.get("/{user_id}/followers", response_model=list[UserPublic])
+def read_followers(
+    user_id: int, db: SessionDep, offset: int = 0, limit: Annotated[int, Query(le=100)] = 20
+):
+    get_user_or_404(db, user_id)
+    stmt = (
+        select(User)
+        .join(Follow, col(Follow.follower_id) == col(User.id))
+        .where(col(Follow.followed_id) == user_id)
+        .order_by(col(Follow.created_at).desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return db.exec(stmt).all()
